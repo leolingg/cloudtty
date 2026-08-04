@@ -184,13 +184,48 @@ spec:
                 type: array
               exposureMode:
                 description: ExposeMode describes how to access ttyd service, either
-                  ClusterIP, NodePort, Ingress or VirtualService.
+                  ClusterIP, NodePort, Ingress, VirtualService or HTTPRoute.
                 enum:
                 - ClusterIP
                 - NodePort
                 - Ingress
                 - VirtualService
+                - HTTPRoute
                 type: string
+              httpRouteConfig:
+                description: HTTPRouteConfig specifies some of the parameters necessary
+                  to create the HTTPRoute (Gateway API).
+                properties:
+                  annotations:
+                    additionalProperties:
+                      type: string
+                    description: Annotations specifies a set of key-value pairs that
+                      you can attach annotations to a HTTPRoute.
+                    type: object
+                  gatewayName:
+                    description: |-
+                      GatewayName specifies the name of the parent Gateway that the HTTPRoute
+                      attaches to (parentRefs). The gateway must already exist in the cluster.
+                    type: string
+                  gatewayNamespace:
+                    description: |-
+                      GatewayNamespace specifies the namespace of the parent Gateway,
+                      if it's empty, default the HTTPRoute namespace.
+                    type: string
+                  hostname:
+                    description: Hostname specifies a hostname added to spec.hostnames
+                      of the HTTPRoute.
+                    type: string
+                  namespace:
+                    description: |-
+                      Namespace specifies a namespace that the HTTPRoute will be
+                      created in it. if it's empty, default the cloudshell namespace.
+                    type: string
+                  routeName:
+                    description: RouteName specifies a name for the shared HTTPRoute,
+                      if it's empty, default "cloudshell-httproute".
+                    type: string
+                type: object
               image:
                 description: |-
                   Image defines the image to cloudshell, we can customize an image.

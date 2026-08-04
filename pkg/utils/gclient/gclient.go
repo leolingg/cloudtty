@@ -7,6 +7,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	cloudshellv1alpha1 "github.com/cloudtty/cloudtty/pkg/apis/cloudshell/v1alpha1"
 )
@@ -20,6 +21,7 @@ func init() {
 	utilruntime.Must(corev1.AddToScheme(aggregatedScheme))
 	utilruntime.Must(cloudshellv1alpha1.AddToScheme(aggregatedScheme))
 	utilruntime.Must(istionetworkingv1beta1.AddToScheme(aggregatedScheme))
+	utilruntime.Must(gatewayv1.AddToScheme(aggregatedScheme))
 }
 
 // NewSchema returns a singleton schema set which aggregated Kubernetes's schemes and extended schemes.

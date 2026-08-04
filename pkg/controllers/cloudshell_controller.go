@@ -37,6 +37,7 @@ import (
 	"k8s.io/kubectl/pkg/cmd/exec"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	cloudshellv1alpha1 "github.com/cloudtty/cloudtty/pkg/apis/cloudshell/v1alpha1"
 	"github.com/cloudtty/cloudtty/pkg/constants"
@@ -574,6 +575,13 @@ func (c *Controller) CreateRouteRule(ctx context.Context, cloudshell *cloudshell
 		}
 
 		accessURL = SetRouteRulePath(cloudshell)
+	case cloudshellv1alpha1.ExposureHTTPRoute:
+		if err := c.CreateHTTPRouteForCloudshell(ctx, worker.GetName(), cloudshell); err != nil {
+			klog.ErrorS(err, "failed to create httproute for cloudshell", "cloudshell", klog.KObj(cloudshell))
+			return "", err
+		}
+
+		accessURL = SetRouteRulePath(cloudshell)
 	}
 
 	return accessURL, nil
@@ -872,6 +880,89 @@ func (c *Controller) CreateVirtualServiceForCloudshell(ctx context.Context, serv
 	return c.Update(ctx, virtualService)
 }
 
+// CreateHTTPRouteForCloudshell create a HTTPRoute(Gateway API) resource in the cluster. if there
+// is no gateway-api CRD be installed in the cluster, will not create the resource.
+func (c *Controller) CreateHTTPRouteForCloudshell(ctx context.Context, service string, cloudshell *cloudshellv1alpha1.CloudShell) error {
+	config := cloudshell.Spec.HTTPRouteConfig
+	if config == nil {
+		return errors.New("unable create httproute, missing configuration options")
+	}
+	if len(config.GatewayName) == 0 {
+		return errors.New("unable create httproute, missing gateway name in configuration options")
+	}
+
+	objectKey := HTTPRouteNamespacedName(cloudshell)
+	httpRoute := &gatewayv1.HTTPRoute{}
+
+	if err := c.Get(ctx, objectKey, httpRoute); err != nil {
+		if !apierrors.IsNotFound(err) {
+			return err
+		}
+
+		// if there is not httpRoute in the cluster, create the base httpRoute.
+		httpRouteBytes, err := util.ParseTemplate(manifests.HTTPRouteTmplV1, struct {
+			Name             string
+			Namespace        string
+			GatewayName      string
+			GatewayNamespace string
+			Hostname         string
+			Annotations      map[string]string
+			Path             string
+			ServiceName      string
+		}{
+			Name:             objectKey.Name,
+			Namespace:        objectKey.Namespace,
+			GatewayName:      config.GatewayName,
+			GatewayNamespace: config.GatewayNamespace,
+			Hostname:         config.Hostname,
+			Annotations:      config.Annotations,
+			Path:             SetRouteRulePath(cloudshell),
+			ServiceName:      service,
+		})
+		if err != nil {
+			return errors.Wrapf(err, "failed to parse cloudshell [%s] httproute", cloudshell.Name)
+		}
+
+		decoder := serializer.NewCodecFactory(c.Scheme).UniversalDeserializer()
+		obj, _, err := decoder.Decode(httpRouteBytes, nil, nil)
+		if err != nil {
+			klog.ErrorS(err, "failed to decode httproute manifest", "cloudshell", klog.KObj(cloudshell))
+			return err
+		}
+		httpRoute = obj.(*gatewayv1.HTTPRoute)
+		httpRoute.SetLabels(map[string]string{constants.WorkerOwnerLabelKey: cloudshell.Name})
+
+		return c.Create(ctx, httpRoute)
+	}
+	found := false
+	rules := httpRoute.Spec.Rules
+	routePath := SetRouteRulePath(cloudshell)
+	// if the path already exists in the httpRoute, update backendRefs service name
+	for i := 0; i < len(rules); i++ {
+		if ruleMatchesPath(rules[i], routePath) {
+			rules[i].BackendRefs[0].Name = gatewayv1.ObjectName(service)
+			found = true
+		}
+	}
+	// if the path not exists, add a rule in the httpRoute
+	if !found {
+		newRule := httpRoute.Spec.Rules[0].DeepCopy()
+		*newRule.Matches[0].Path.Value = routePath
+		newRule.BackendRefs[0].Name = gatewayv1.ObjectName(service)
+		httpRoute.Spec.Rules = append(httpRoute.Spec.Rules, *newRule)
+	}
+
+	return c.Update(ctx, httpRoute)
+}
+
+// ruleMatchesPath returns true if the first match of the rule is a path match on routePath.
+func ruleMatchesPath(rule gatewayv1.HTTPRouteRule, routePath string) bool {
+	if len(rule.Matches) == 0 || rule.Matches[0].Path == nil || rule.Matches[0].Path.Value == nil {
+		return false
+	}
+	return *rule.Matches[0].Path.Value == routePath
+}
+
 // UpdateCloudshellStatus update the clodushell status.
 func (c *Controller) UpdateCloudshellStatus(ctx context.Context, cloudshell *cloudshellv1alpha1.CloudShell, phase string) error {
 	firstTry := true
@@ -997,6 +1088,31 @@ func (c *Controller) removeCloudshellRoute(ctx context.Context, cloudshell *clou
 
 		virtualService.Spec.Http = newHTTPRoute
 		return c.Update(ctx, virtualService)
+	case cloudshellv1alpha1.ExposureHTTPRoute:
+		httpRoute := &gatewayv1.HTTPRoute{}
+		if err := c.Get(ctx, HTTPRouteNamespacedName(cloudshell), httpRoute); err != nil {
+			if apierrors.IsNotFound(err) {
+				return nil
+			}
+			return err
+		}
+
+		routePath := SetRouteRulePath(cloudshell)
+		// remove rule from httpRoute. if the length of rules is zero, delete it directly.
+		rules := httpRoute.Spec.Rules
+		newRules := []gatewayv1.HTTPRouteRule{}
+		for i := 0; i < len(rules); i++ {
+			if !ruleMatchesPath(rules[i], routePath) {
+				newRules = append(newRules, rules[i])
+			}
+		}
+		klog.InfoS("httproute rule remove result", "cloudshell", cloudshell.Name, "old rules count", len(rules), "new rules count", len(newRules))
+		if len(newRules) == 0 {
+			return c.Delete(ctx, httpRoute)
+		}
+
+		httpRoute.Spec.Rules = newRules
+		return c.Update(ctx, httpRoute)
 	}
 	return nil
 }
@@ -1052,6 +1168,23 @@ func VsNamespacedName(cloudshell *cloudshellv1alpha1.CloudShell) types.Namespace
 	}
 
 	return types.NamespacedName{Name: vsName, Namespace: namespace}
+}
+
+// HTTPRouteNamespacedName return a namespacedName according to httpRouteConfig.
+func HTTPRouteNamespacedName(cloudshell *cloudshellv1alpha1.CloudShell) types.NamespacedName {
+	// set custom name and namespace to httpRoute.
+	config := cloudshell.Spec.HTTPRouteConfig
+	routeName := constants.DefaultHTTPRouteName
+	if config != nil && len(config.RouteName) > 0 {
+		routeName = config.RouteName
+	}
+
+	namespace := cloudshell.Namespace
+	if config != nil && len(config.Namespace) > 0 {
+		namespace = config.Namespace
+	}
+
+	return types.NamespacedName{Name: routeName, Namespace: namespace}
 }
 
 // validateIngressHost validates an ingress host allowing optional wildcard prefix "*.".

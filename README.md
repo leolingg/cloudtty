@@ -186,7 +186,7 @@ For more samples refer to [kubectl-node-shell](https://github.com/kvaps/kubectl-
 
 ### More Exposure Modes
 
-Cloudtty provides the following four modes to expose cloudtty services to satisfy different usage scenarios:
+Cloudtty provides the following five modes to expose cloudtty services to satisfy different usage scenarios:
 
 - `ClusterIP`: [Service](https://kubernetes.io/docs/concepts/services-networking/service/) ClusterIP type in a cluster,
   which is suitable for third-party integration of cloudtty server. You can choose a more flexible way to expose your services.
@@ -199,6 +199,12 @@ Cloudtty provides the following four modes to expose cloudtty services to satisf
 
 - `VirtualService` (Istio): Create a ClusterIP Service resource in a cluster and create a `VirtaulService` resource.
   This mode is used when [Istio](https://github.com/istio/istio) is used to load traffic in a cluster.
+
+- `HTTPRoute` (Gateway API): Create a ClusterIP Service resource in a cluster and create an [HTTPRoute](https://gateway-api.sigs.k8s.io/api-types/httproute/)
+  resource attached to an existing `Gateway` (configured by `spec.httpRouteConfig.gatewayName`).
+  This mode requires the [Gateway API CRDs](https://github.com/kubernetes-sigs/gateway-api) to be installed in the cluster,
+  and a Gateway implementation that supports the `URLRewrite` filter (e.g. Envoy Gateway, Istio >= 1.19, NGINX Gateway Fabric, Cilium).
+  The access url consists of the external address of the `Gateway` and the path in the cloudshell status.
 
 ### featureGate
 
@@ -213,7 +219,7 @@ You can use the field `spec.secretRef.name` to difine where kubeconfig is. Curre
 ## Rationale
 
 1. Operator creates a job and a service with the same name in the proper namespace.
-   If `Ingress` or `VirtualService` is used, it also creates the routing information.
+   If `Ingress`, `VirtualService` or `HTTPRoute` is used, it also creates the routing information.
 
 2. When the pod status is `Ready`, it will show the access url to the cloudshell status.
 
@@ -222,7 +228,7 @@ You can use the field `spec.secretRef.name` to difine where kubeconfig is. Curre
    You can set cloudshell to delete associated resources when the status is `Completed`.
 
 4. When cloudshell is deleted, the corresponding job and service (through 'ownerReference') are automatically deleted.
-   If Ingress or VirtualService mode is used, the corresponding routing information will be deleted too.
+   If Ingress, VirtualService or HTTPRoute mode is used, the corresponding routing information will be deleted too.
 
 ## Developer Guide
 

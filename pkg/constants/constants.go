@@ -4,6 +4,7 @@ const (
 	DefaultPathPrefix         = "/apis/v1alpha1/cloudshell"
 	DefaultIngressName        = "cloudshell-ingress"
 	DefaultVirtualServiceName = "cloudshell-virtualService"
+	DefaultHTTPRouteName      = "cloudshell-httproute"
 	DefaultServicePort        = 7681
 	DefaultTtydImage          = "ghcr.io/cloudtty/cloudshell:v0.8.9"
 

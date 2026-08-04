@@ -24,7 +24,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// ExposeMode describes how to access ttyd service, either ClusterIP, NodePort, Ingress or VirtualService.
+// ExposeMode describes how to access ttyd service, either ClusterIP, NodePort, Ingress, VirtualService or HTTPRoute.
 // +enum
 type ExposureMode string
 
@@ -33,6 +33,7 @@ const (
 	ExposureServiceNodePort  ExposureMode = "NodePort"
 	ExposureIngress          ExposureMode = "Ingress"
 	ExposureVirtualService   ExposureMode = "VirtualService"
+	ExposureHTTPRoute        ExposureMode = "HTTPRoute"
 
 	PhaseReady     = "Ready"
 	PhaseCompleted = "Complete"
@@ -75,7 +76,7 @@ type CloudShellSpec struct {
 	// +optional
 	Cleanup bool `json:"cleanup,omitempty"`
 
-	// +kubebuilder:validation:Enum=ClusterIP;NodePort;Ingress;VirtualService
+	// +kubebuilder:validation:Enum=ClusterIP;NodePort;Ingress;VirtualService;HTTPRoute
 	// + optional
 	ExposeMode ExposureMode `json:"exposureMode,omitempty"`
 
@@ -89,6 +90,10 @@ type CloudShellSpec struct {
 	// VirtualServiceConfig specifies some of the parameters necessary to create the virtaulService.
 	// +optional
 	VirtualServiceConfig *VirtualServiceConfig `json:"virtualServiceConfig,omitempty"`
+
+	// HTTPRouteConfig specifies some of the parameters necessary to create the HTTPRoute (Gateway API).
+	// +optional
+	HTTPRouteConfig *HTTPRouteConfig `json:"httpRouteConfig,omitempty"`
 
 	// PathPrefix specified a path prefix to access url, if not, the default path is used.
 	// +optional
@@ -160,6 +165,33 @@ type VirtualServiceConfig struct {
 
 	// Gateway must be specified and the gateway already exists in the cluster.
 	Gateway string `json:"gateway,omitempty"`
+}
+
+// HTTPRouteConfig specifies some of the parameters necessary to create the HTTPRoute (Gateway API).
+type HTTPRouteConfig struct {
+	// RouteName specifies a name for the shared HTTPRoute, if it's empty, default "cloudshell-httproute".
+	RouteName string `json:"routeName,omitempty"`
+
+	// Namespace specifies a namespace that the HTTPRoute will be
+	// created in it. if it's empty, default the cloudshell namespace.
+	Namespace string `json:"namespace,omitempty"`
+
+	// GatewayName specifies the name of the parent Gateway that the HTTPRoute
+	// attaches to (parentRefs). The gateway must already exist in the cluster.
+	GatewayName string `json:"gatewayName,omitempty"`
+
+	// GatewayNamespace specifies the namespace of the parent Gateway,
+	// if it's empty, default the HTTPRoute namespace.
+	// +optional
+	GatewayNamespace string `json:"gatewayNamespace,omitempty"`
+
+	// Hostname specifies a hostname added to spec.hostnames of the HTTPRoute.
+	// +optional
+	Hostname string `json:"hostname,omitempty"`
+
+	// Annotations specifies a set of key-value pairs that you can attach annotations to a HTTPRoute.
+	// +optional
+	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
 // IngressConfig specifies some of the parameters necessary to create the ingress.

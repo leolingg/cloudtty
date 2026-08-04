@@ -128,6 +128,44 @@ spec:
           number: 7681
 `
 
+	HTTPRouteTmplV1 = `
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: "{{ .Name }}"
+  namespace: "{{ .Namespace }}"
+  {{- if .Annotations }}
+  annotations:
+    {{- range $key, $value := .Annotations }}
+    {{ $key }}: "{{ $value }}"
+    {{- end }}
+  {{- end }}
+spec:
+  parentRefs:
+  - name: "{{ .GatewayName }}"
+    {{- if .GatewayNamespace }}
+    namespace: "{{ .GatewayNamespace }}"
+    {{- end }}
+  {{- if .Hostname }}
+  hostnames:
+  - "{{ .Hostname }}"
+  {{- end }}
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: "{{ .Path }}"
+    filters:
+    - type: URLRewrite
+      urlRewrite:
+        path:
+          type: ReplacePrefixMatch
+          replacePrefixMatch: /
+    backendRefs:
+    - name: "{{ .ServiceName }}"
+      port: 7681
+`
+
 	KubeconfigTmplV1 = `
 apiVersion: v1
 clusters:

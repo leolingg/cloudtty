@@ -1,0 +1,19 @@
+apiVersion: cloudshell.cloudtty.io/v1alpha1
+kind: CloudShell
+metadata:
+  name: httproute-demo
+  namespace: "cloudtty-system"
+spec:
+ secretRef:
+   name: "my-kubeconfig"
+ runAsUser: "root"
+ commandAction: "bash"
+ exposureMode: "HTTPRoute"
+ pathPrefix: "/apis/cloudtty.io/"
+ ttlSecondsAfterStarted: 500
+ once: false
+ httpRouteConfig:
+    routeName: "cloudshell-httproute-demo"
+    namespace: "cloudtty-system"
+    gatewayName: "cloudshell-gateway"
+    gatewayNamespace: "gateway-system"
